@@ -6,11 +6,8 @@ export function usePlayerProfile() {
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
     void fetchMyProfile()
       .then((data) => {
         if (!cancelled) setProfile(data)

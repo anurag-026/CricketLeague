@@ -158,7 +158,7 @@ export function LiveMatchArena() {
         ),
       },
     }
-  }, [myDuel, playerUsernames, user?.userId])
+  }, [myDuel, playerUsernames, user])
 
   async function exitMatch(forfeit: boolean) {
     if (!matchId || leaving) return

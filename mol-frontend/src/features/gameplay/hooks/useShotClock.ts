@@ -7,23 +7,22 @@ export interface UseShotClockOptions {
 }
 
 export function useShotClock({ deadlineEpochMs }: UseShotClockOptions = {}) {
-  const [secondsLeft, setSecondsLeft] = useState(BALL_SECONDS)
+  const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    if (!deadlineEpochMs) {
-      setSecondsLeft(BALL_SECONDS)
-      return
-    }
+    if (!deadlineEpochMs) return
 
-    function tick() {
-      const remaining = Math.ceil((deadlineEpochMs! - Date.now()) / 1000)
-      setSecondsLeft(Math.max(0, Math.min(BALL_SECONDS, remaining)))
+    const sync = window.setTimeout(() => setNow(Date.now()), 0)
+    const id = window.setInterval(() => setNow(Date.now()), 200)
+    return () => {
+      window.clearTimeout(sync)
+      window.clearInterval(id)
     }
-
-    tick()
-    const id = window.setInterval(tick, 200)
-    return () => window.clearInterval(id)
   }, [deadlineEpochMs])
+
+  const secondsLeft = !deadlineEpochMs
+    ? BALL_SECONDS
+    : Math.max(0, Math.min(BALL_SECONDS, Math.ceil((deadlineEpochMs - now) / 1000)))
 
   const filledSegments = Math.max(0, Math.min(BALL_SECONDS, secondsLeft))
 

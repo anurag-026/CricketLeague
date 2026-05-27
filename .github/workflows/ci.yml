@@ -52,12 +52,10 @@ jobs:
 
       - name: Test
         env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/mol
-          SPRING_DATASOURCE_USERNAME: mol
-          SPRING_DATASOURCE_PASSWORD: mol
-          SPRING_DATA_REDIS_HOST: localhost
           JWT_SECRET: ci-test-jwt-secret-minimum-32-chars
-        run: ./mvnw -B verify
+        run: |
+          chmod +x mvnw
+          ./mvnw -B verify
 
   frontend:
     name: Frontend (Vite)
