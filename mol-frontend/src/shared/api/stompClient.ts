@@ -1,7 +1,8 @@
 import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { getStoredToken } from '@/features/auth/utils'
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws/game'
+const rawWsUrl = "wss://mol-backend.onrender.com/ws/game"
+const WS_URL = rawWsUrl.endsWith('/') ? rawWsUrl.slice(0, -1) : rawWsUrl
 
 type MessageHandler = (message: IMessage) => void
 

@@ -3,7 +3,7 @@ import { getStoredToken, clearAuthStorage } from '@/features/auth/utils'
 import { useAppStore } from '@/app/store'
 import type { ApiError } from '@/shared/types'
 
-const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+const rawApiBaseUrl = "https://mol-backend.onrender.com"
 const baseURL = rawApiBaseUrl.endsWith('/') ? rawApiBaseUrl.slice(0, -1) : rawApiBaseUrl
 
 export const http = axios.create({
