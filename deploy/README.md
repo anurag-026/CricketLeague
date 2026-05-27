@@ -1,6 +1,6 @@
 # MyOwnLeague — Production Deployment Guide
 
-This folder contains deployment architecture, CI/CD, container images, Kubernetes manifests, and operational runbooks for **mol-backend** (Spring Boot) and **mol-frontend** (Vite/React PWA).
+This folder contains deployment architecture, CI/CD, container images, and operational runbooks for **mol-backend** (Spring Boot) and **mol-frontend** (Vite/React PWA).
 
 ## Quick links
 
@@ -18,7 +18,6 @@ mol-backend/          Spring Boot API + STOMP (/ws/game)
 mol-frontend/       Static SPA (nginx in prod)
 deploy/
   docker/           docker-compose.prod.yml
-  kubernetes/       K8s manifests (GKE/EKS/AKS compatible)
 .github/workflows/  CI + CD pipelines
 ```
 
@@ -40,7 +39,7 @@ The backend uses Spring’s **in-memory simple broker** (`WebSocketConfig`). Gam
 
 | Scale stage | Approach |
 |-------------|----------|
-| **MVP prod** | 1 backend replica + sticky ingress (manifests include affinity) |
+| **MVP prod** | 1 backend instance (Render Web Service) |
 | **Growth** | Enable **Redis STOMP relay** or external broker (RabbitMQ) so multiple API pods share `/topic` |
 | **High traffic** | Separate WS gateway service; keep REST stateless |
 
@@ -48,15 +47,15 @@ Do not run multiple backend replicas without solving broker affinity — players
 
 ## Recommended cloud baseline (cost-conscious)
 
-| Layer | Service examples |
-|-------|------------------|
-| Frontend | CloudFront + S3, or nginx behind ALB |
-| API | ECS Fargate / Cloud Run / K8s Deployment |
-| PostgreSQL | RDS / Cloud SQL / Azure Database (Multi-AZ) |
-| Redis | ElastiCache / Memorystore (replication enabled) |
-| Secrets | AWS Secrets Manager / GCP Secret Manager |
-| TLS | ACM / cert-manager + Let’s Encrypt |
-| CI/CD | GitHub Actions → ECR/GCR → deploy |
+| Layer | Service |
+|-------|---------|
+| Frontend | Cloudflare Pages |
+| API | Render Web Service (Docker deploy) |
+| PostgreSQL | Render PostgreSQL / managed PostgreSQL |
+| Redis | Render Redis / managed Redis |
+| Secrets | Render environment variables + secret store |
+| TLS | Managed by Cloudflare and Render |
+| CI/CD | GitHub Actions + platform-native deploy hooks |
 
 ## Environment variables
 

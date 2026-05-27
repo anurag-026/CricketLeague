@@ -79,7 +79,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy-staging:
-    name: Deploy staging
+    name: Deploy staging (Render + Cloudflare Pages)
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
@@ -89,28 +89,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Deploy manifests
+      - name: Trigger Render backend deploy (staging)
         env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_STAGING }}
-          IMAGE_TAG: main-${{ github.run_number }}
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_STAGING_DEPLOY_HOOK_URL }}
         run: |
-          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
-          kubectl apply -f deploy/kubernetes/namespace.yaml
-          kubectl set image deployment/mol-backend backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} -n mol --record || true
-          kubectl set image deployment/mol-frontend frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} -n mol --record || true
-          kubectl rollout status deployment/mol-backend -n mol --timeout=300s || true
-          kubectl rollout status deployment/mol-frontend -n mol --timeout=120s || true
+          curl -X POST "$RENDER_DEPLOY_HOOK"
+
+      - name: Trigger Cloudflare Pages deploy (staging)
+        env:
+          CLOUDFLARE_PAGES_STAGING_DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_PAGES_STAGING_DEPLOY_HOOK_URL }}
+        run: |
+          curl -X POST "$CLOUDFLARE_PAGES_STAGING_DEPLOY_HOOK"
 
       - name: Smoke test
         run: |
           curl -sf "${{ vars.STAGING_API_URL }}/actuator/health" | grep -q UP
 
   deploy-production:
-    name: Deploy production
+    name: Deploy production (Render + Cloudflare Pages)
     needs: build-and-push
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
@@ -120,19 +116,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Deploy production
+      - name: Trigger Render backend deploy (production)
         env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
-          IMAGE_TAG: ${{ github.ref_name }}
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK_URL }}
         run: |
-          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
-          kubectl apply -f deploy/kubernetes/
-          kubectl rollout status deployment/mol-backend -n mol --timeout=300s
-          kubectl rollout status deployment/mol-frontend -n mol --timeout=120s
+          curl -X POST "$RENDER_DEPLOY_HOOK"
+
+      - name: Trigger Cloudflare Pages deploy (production)
+        env:
+          CLOUDFLARE_PAGES_PRODUCTION_DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_PAGES_PRODUCTION_DEPLOY_HOOK_URL }}
+        run: |
+          curl -X POST "$CLOUDFLARE_PAGES_PRODUCTION_DEPLOY_HOOK"
 
       - name: Smoke test
         run: |

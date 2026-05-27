@@ -3,7 +3,8 @@ import { getStoredToken, clearAuthStorage } from '@/features/auth/utils'
 import { useAppStore } from '@/app/store'
 import type { ApiError } from '@/shared/types'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? ''
+const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+const baseURL = rawApiBaseUrl.endsWith('/') ? rawApiBaseUrl.slice(0, -1) : rawApiBaseUrl
 
 export const http = axios.create({
   baseURL,

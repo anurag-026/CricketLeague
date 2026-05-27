@@ -13,7 +13,6 @@
 !**/.env.example
 
 deploy/docker/.env
-deploy/kubernetes/secret.yaml
 
 # OS
 Thumbs.db

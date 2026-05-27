@@ -1,4 +1,4 @@
-# Production-like local / single-node stack. Not for multi-AZ cloud — use K8s + managed DB.
+# Production-like local / single-node stack. Not for multi-AZ cloud production.
 name: mol-prod
 
 services:

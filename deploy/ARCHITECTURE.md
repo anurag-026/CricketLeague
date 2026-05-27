@@ -12,12 +12,12 @@ flowchart TB
 
   subgraph edge [Edge]
     CDN[CDN / WAF]
-    ING[Ingress / ALB<br/>TLS termination]
+    ING[Cloudflare Edge + Render ingress<br/>TLS termination]
   end
 
   subgraph app [Application tier]
-    FE[Frontend pods<br/>nginx static]
-    API[Backend pods<br/>Spring Boot]
+    FE[Cloudflare Pages<br/>static frontend]
+    API[Render backend service<br/>Spring Boot]
   end
 
   subgraph data [Data tier]
@@ -78,13 +78,13 @@ flowchart TB
 ```
 
 - **1 API replica** until Redis STOMP relay is implemented.
-- Ingress: **session affinity** for `/ws/**` if you add replicas early.
+- Ensure websocket routing remains stable for `/ws/**` when scaling backend instances.
 - Frontend: immutable static assets; long cache on hashed files, short on `index.html`.
 
 ### Phase 2 — Horizontal API + sticky WS
 
-- API Deployment `replicas: 2+` with **pod anti-affinity**.
-- Ingress cookie affinity OR Redis message broker for `/topic`.
+- API instances `2+` only after websocket broadcast strategy is shared.
+- Use Redis message broker for `/topic` when scaling horizontally.
 - Redis: primary + replica; enable persistence only if you rely on Redis for recovery beyond TTL keys (current design: ephemeral OK with AOF optional).
 
 ### Phase 3 — Multi-region (optional)
@@ -108,7 +108,7 @@ flowchart TB
 | API pod crash mid-match | Redis retains state; client reconnects STOMP; implement resume window (phase1 roadmap) |
 | Redis loss | Use managed Redis with replication; TTL keys limit blast radius |
 | DB outage | Auth/register down; in-flight matches can continue until Redis TTL expires |
-| Deploy during traffic | Rolling update + `maxUnavailable: 0` + readiness probe; schedule off-peak |
+| Deploy during traffic | Rolling deploy with health checks; schedule off-peak |
 | DDoS / brute force room codes | WAF rate limits + app-level rate limiting |
 | Secret leak | Secrets Manager rotation; separate JWT signing keys per env |
 
@@ -135,8 +135,8 @@ flowchart TB
 
 | Scenario | RPO | RTO | Procedure |
 |----------|-----|-----|-----------|
-| AZ failure | 0–5 min (RDS) | 15–30 min | Failover Multi-AZ RDS; redeploy API in healthy AZ |
+| AZ failure | 0–5 min (RDS) | 15–30 min | Failover Multi-AZ RDS; redeploy backend in healthy zone |
 | Region loss | 24h (snapshot) | 2–4 h | Restore PG snapshot; promote Redis replica; DNS cutover |
-| Bad deploy | 0 | 5 min | `kubectl rollout undo` or re-deploy previous image tag |
+| Bad deploy | 0 | 5 min | Roll back to previous Render deploy and Cloudflare Pages release |
 
 Backup: automated RDS snapshots (7–35 days), test restore quarterly.

@@ -41,20 +41,20 @@ flowchart LR
 1. Build `mol-backend` and `mol-frontend` Docker images.
 2. Tag: `sha-<short>`, `main-<run_number>`, and semver on release tags.
 3. Push to container registry (GHCR/ECR/GCR).
-4. Deploy to **staging** namespace/cluster.
+4. Deploy to **staging** services (Render backend + Cloudflare Pages frontend).
 5. Run smoke: `GET /actuator/health`, auth health, static frontend 200.
 
 ### Production promotion
 
 - Trigger: GitHub **environment** `production` with required reviewers.
 - Input: image digest or tag (immutable — never deploy `latest` alone).
-- Strategy: **rolling update** (K8s) or **blue/green** (two deployments + ingress switch).
+- Strategy: Render rolling deploy for backend + Cloudflare Pages immutable frontend deployments.
 
 ## Release process
 
 1. Freeze: no unrelated merges during release window.
 2. Create release branch or tag `v1.2.3` from `main`.
-3. Run DB migrations (Flyway) **before** or as init job **before** new app pods take traffic.
+3. Run DB migrations (Flyway) **before** backend starts taking production traffic.
 4. Deploy backend → wait healthy → deploy frontend (API URL baked at build).
 5. Monitor error rate and WS connect success for 30 minutes.
 6. Document release in changelog; archive staging tag.
@@ -63,9 +63,9 @@ flowchart LR
 
 | Symptom | Action |
 |---------|--------|
-| 5xx spike after deploy | `kubectl rollout undo deployment/mol-backend` (and frontend) |
+| 5xx spike after deploy | Trigger rollback to previous Render deploy and previous Cloudflare Pages build |
 | Migration failure | Stop deploy; restore DB from snapshot if forward migration partial |
-| WS broken | Check ingress timeouts + affinity; revert to last known good image |
+| WS broken | Check Render service settings/timeouts and revert to last known good deploy |
 
 Keep **previous image digest** in deployment annotations for one-click rollback.
 
@@ -73,15 +73,14 @@ Keep **previous image digest** in deployment annotations for one-click rollback.
 
 | Config | Where |
 |--------|-------|
-| Non-secret app config | K8s ConfigMap / SSM Parameter Store |
-| Secrets | K8s Secret (Sealed Secrets / External Secrets Operator) |
+| Non-secret app config | Render and Cloudflare Pages environment settings |
+| Secrets | Render secret environment variables / managed secret stores |
 | Frontend API URLs | CI build-args at image build time per environment |
 
 ## Downtime minimization
 
-- **Readiness** probe must pass before Service receives traffic.
-- **PreStop** hook: `sleep 15` on API to drain STOMP connections.
-- Deploy during low-traffic window; use **PodDisruptionBudget** `minAvailable: 1`.
+- Backend health checks must pass before traffic is served.
+- Deploy during low-traffic windows and monitor websocket reconnect behavior.
 - Database migrations: backward-compatible expand/contract pattern.
 
 ## Smoke test script (post-deploy)
