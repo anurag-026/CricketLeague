@@ -1,5 +1,9 @@
 HELP.md
 target/
+
+# Local Spring overrides (real credentials)
+src/main/resources/application-local.properties
+src/main/resources/application-*-local.properties
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

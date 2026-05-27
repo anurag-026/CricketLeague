@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Maven)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mol-backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mol
+          POSTGRES_USER: mol
+          POSTGRES_PASSWORD: mol
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mol -d mol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Test
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/mol
+          SPRING_DATASOURCE_USERNAME: mol
+          SPRING_DATASOURCE_PASSWORD: mol
+          SPRING_DATA_REDIS_HOST: localhost
+          JWT_SECRET: ci-test-jwt-secret-minimum-32-chars
+        run: ./mvnw -B verify
+
+  frontend:
+    name: Frontend (Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mol-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mol-frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        env:
+          VITE_API_BASE_URL: https://api.example.com
+          VITE_WS_URL: wss://api.example.com/ws/game
+        run: npm run build
+
+  docker-build:
+    name: Docker build (main only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: mol-backend
+          push: false
+          tags: mol-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: mol-frontend
+          push: false
+          tags: mol-frontend:ci
+          build-args: |
+            VITE_API_BASE_URL=https://api.example.com
+            VITE_WS_URL=wss://api.example.com/ws/game
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,139 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/mol-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/mol-frontend
+
+jobs:
+  build-and-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.BACKEND_IMAGE }}
+            ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=main-${{ github.run_number }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: mol-backend
+          push: true
+          tags: ${{ env.BACKEND_IMAGE }}:sha-${{ github.sha }},${{ env.BACKEND_IMAGE }}:main-${{ github.run_number }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: mol-frontend
+          push: true
+          tags: ${{ env.FRONTEND_IMAGE }}:sha-${{ github.sha }},${{ env.FRONTEND_IMAGE }}:main-${{ github.run_number }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
+            VITE_WS_URL=${{ vars.VITE_WS_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy staging
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.app.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Deploy manifests
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_STAGING }}
+          IMAGE_TAG: main-${{ github.run_number }}
+        run: |
+          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl apply -f deploy/kubernetes/namespace.yaml
+          kubectl set image deployment/mol-backend backend=${{ env.BACKEND_IMAGE }}:${IMAGE_TAG} -n mol --record || true
+          kubectl set image deployment/mol-frontend frontend=${{ env.FRONTEND_IMAGE }}:${IMAGE_TAG} -n mol --record || true
+          kubectl rollout status deployment/mol-backend -n mol --timeout=300s || true
+          kubectl rollout status deployment/mol-frontend -n mol --timeout=120s || true
+
+      - name: Smoke test
+        run: |
+          curl -sf "${{ vars.STAGING_API_URL }}/actuator/health" | grep -q UP
+
+  deploy-production:
+    name: Deploy production
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://app.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Deploy production
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+          IMAGE_TAG: ${{ github.ref_name }}
+        run: |
+          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl apply -f deploy/kubernetes/
+          kubectl rollout status deployment/mol-backend -n mol --timeout=300s
+          kubectl rollout status deployment/mol-frontend -n mol --timeout=120s
+
+      - name: Smoke test
+        run: |
+          curl -sf "${{ vars.PRODUCTION_API_URL }}/actuator/health" | grep -q UP
